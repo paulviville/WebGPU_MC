@@ -1,0 +1,40 @@
+- init webgpu project
+- Dimensions X, Y, Z
+- create vertex storage buffer
+    - size : (X+1)(Y+1)(Z+1)
+    - STORAGE COPY_SRC
+- create vertex staging buffer
+    - size vertex storage buffer
+    - MAP_READ COPY_DST
+- compute grid point coordinates
+    - copyBufferToBuffer(vertexStorage -> vertexStaging)
+    - log coordinates
+- display instanced sphere on vertices
+
+- add implicit equation
+    - compute vertex value
+    - compute vertex gradient
+- display gradient with line segments
+
+- for each cube
+    - compute On/Off from incident vertices
+    - show sphere on center of on cubes
+
+- for each edge
+    - compute on/Off
+    - show vertex on
+    - show interpolated vertex
+
+- merge data of edges
+
+- create search table
+
+- create triangles from active cubes
+- display triangles
+    - add basic lighting 
+
+- merge data of triangles
+
+
+
+
