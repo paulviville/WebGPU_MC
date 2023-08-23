@@ -1,3 +1,8 @@
+import { Loader } from "./utils/loader.js";
+import { Vertex } from "./utils/mesh.js";
+import { Model } from "./utils/model.js";
+import { OrbitCamera } from "./utils/orbit-camera.js";
+
 console.log("WebGPU_MC")
 
 // grid structure 
@@ -13,7 +18,7 @@ console.log("WebGPU_MC")
 //    0 +-------------+ 1             +------0------+         
 //
 // grid dimensions
-const X = 64, Y = 64, Z = 64;
+const X = 16, Y = 16, Z = 16;
 const nbVertices = (X+1) * (Y+1) * (Z+1);
 const nbEdges = X*(Y+1)*(Z+1) + (X+1)*Y*(Z+1) + (X+1)*(Y+1)*Z;
 const nbFaces = X*Y*(Z+1) + (X+1)*Y*Z + X*(Y+1)*Z;
@@ -133,5 +138,154 @@ const testArray = new Float32Array(data)
 // }
 
 // for(let i = 0; i < testArray.length; i += 4) {
-//     console.log(testArray[i], testArray[i+1], testArray[i+2]);
+//     console.log(`(${testArray[i]}, ${testArray[i+1]}, ${testArray[i+2]}) -> ${testArray[i+3].toPrecision(2)}`)
 // }
+
+
+const canvas = document.getElementById('webGpuCanvas');
+const context = canvas.getContext('webgpu');
+context.configure({
+    device,
+    format: navigator.gpu.getPreferredCanvasFormat(),
+});
+
+
+const camera = new OrbitCamera(canvas);
+
+/// create spheres
+const assetLoader = new Loader;
+const model = new Model(await assetLoader.loadModel('utils/sphere.json'));
+const vertexBuffer = model.createVertexBuffer(device);
+const indexBuffer = model.createIndexBuffer(device);
+
+
+// create rendering resources
+const uniformBuffer = device.createBuffer({
+    label: 'sphere uniform buffer',
+    size: 144,
+    usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+});
+
+const depthTexture = device.createTexture({
+    label: 'depth texture',
+    size: [canvas.width, canvas.height],
+    format: 'depth24plus',
+    usage: GPUTextureUsage.RENDER_ATTACHMENT,
+});
+
+
+
+
+const gridShaderCode = await fetch("./shaders/gridVertex.wgsl").then((response) => response.text())
+const gridShaderModule = device.createShaderModule({
+    label: 'grid vertex shader',
+    code: gridShaderCode,
+});
+
+const gridBindGroupLayout = device.createBindGroupLayout({
+    label: 'grid bind group layout',
+    entries: [
+        { /// uniform buffer
+            binding: 0,
+            visibility: GPUShaderStage.VERTEX | GPUBufferUsage.FRAGMENT,
+            buffer: {},
+        },
+        { /// vertex storage buffer
+            binding: 1,
+            visibility: GPUShaderStage.VERTEX | GPUBufferUsage.FRAGMENT,
+            buffer: {
+                type: 'read-only-storage',
+            }
+        }
+    ]
+});
+
+const gridPipelineLayout = device.createPipelineLayout({
+    bindGroupLayouts: [
+        gridBindGroupLayout,
+    ],
+});
+
+const gridPipeline = device.createRenderPipeline({
+    label: 'grid pipeline',
+    layout: gridPipelineLayout,
+    vertex: {
+        module: gridShaderModule,
+        entryPoint: 'vertex',
+        buffers: [Vertex.vertexLayout()],
+    },
+    fragment: {
+        module: gridShaderModule,
+        entryPoint: 'fragment',
+        targets: [{
+            format: navigator.gpu.getPreferredCanvasFormat(),
+        }]
+    },
+    depthStencil: {
+        depthWriteEnabled: true,
+        depthCompare: 'less',
+        format: 'depth24plus',
+    },
+    primitive: {
+        cullMode: 'back',
+    },
+});
+
+const gridBindGroup = device.createBindGroup({
+    label: 'grid bind group',
+    layout: gridBindGroupLayout,
+    entries: [
+        {binding: 0, resource: {buffer: uniformBuffer}},
+        {binding: 1, resource: {buffer: vertexStorageBuffer}},
+    ],
+});
+
+const colorAttachment = {
+    view: null,
+    clearValue: {r: 0, g: 0, b: 0, a: 1},
+    loadOp: 'clear',
+    loadValue: {r: 0, g: 0, b: 0, a: 1},
+    storeOp: 'store',
+};
+
+const depthStencilAttachment = {
+    view: depthTexture.createView(),
+    depthClearValue: 1.0,
+    depthLoadOp: 'clear',
+    depthStoreOp: 'discard',
+};
+
+
+let skip = false;
+/// rendering
+function render() {
+
+    if(!skip){
+    //move to render function
+    const uniformArray = new Float32Array([
+        ...camera.position, 0.0,
+        ...camera.view,
+        ...camera.projection,
+    ]);
+    device.queue.writeBuffer(uniformBuffer, 0, uniformArray);
+
+    camera.update();
+    colorAttachment.view = context.getCurrentTexture().createView();
+    const renderCommandEncoder = device.createCommandEncoder();
+    const renderPass = renderCommandEncoder.beginRenderPass({
+        colorAttachments: [colorAttachment],
+        depthStencilAttachment: depthStencilAttachment,
+    });
+    renderPass.setPipeline(gridPipeline);
+    renderPass.setBindGroup(0, gridBindGroup);
+    renderPass.setVertexBuffer(0, vertexBuffer);
+    renderPass.setIndexBuffer(indexBuffer, model.indexType);
+    renderPass.drawIndexed(model.numIndices, nbVertices);
+    renderPass.end();
+
+    device.queue.submit([renderCommandEncoder.finish()]);
+    }
+    skip = !skip;
+    requestAnimationFrame(render)
+}
+render();

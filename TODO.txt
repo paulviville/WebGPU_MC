@@ -9,6 +9,9 @@
 - compute grid point coordinates
     - copyBufferToBuffer(vertexStorage -> vertexStaging)
     - log coordinates
+
+
+    
 - display instanced sphere on vertices
 
 - add implicit equation
