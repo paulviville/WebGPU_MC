@@ -142,6 +142,26 @@ const testArray = new Float32Array(data)
 // }
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 const canvas = document.getElementById('webGpuCanvas');
 const context = canvas.getContext('webgpu');
 context.configure({
@@ -154,7 +174,7 @@ const camera = new OrbitCamera(canvas);
 
 /// create spheres
 const assetLoader = new Loader;
-const model = new Model(await assetLoader.loadModel('utils/sphere.json'));
+const model = new Model(await assetLoader.loadModel('utils/billboard.json'));
 const vertexBuffer = model.createVertexBuffer(device);
 const indexBuffer = model.createIndexBuffer(device);
 
@@ -176,7 +196,7 @@ const depthTexture = device.createTexture({
 
 
 
-const gridShaderCode = await fetch("./shaders/gridVertex.wgsl").then((response) => response.text())
+const gridShaderCode = await fetch("./shaders/Vertices/vertexBillboard.wgsl").then((response) => response.text())
 const gridShaderModule = device.createShaderModule({
     label: 'grid vertex shader',
     code: gridShaderCode,
@@ -228,6 +248,7 @@ const gridPipeline = device.createRenderPipeline({
     },
     primitive: {
         cullMode: 'back',
+        // topology: "point-list"
     },
 });
 
