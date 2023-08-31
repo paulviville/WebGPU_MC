@@ -207,12 +207,12 @@ const gridBindGroupLayout = device.createBindGroupLayout({
     entries: [
         { /// uniform buffer
             binding: 0,
-            visibility: GPUShaderStage.VERTEX | GPUBufferUsage.FRAGMENT,
+            visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
             buffer: {},
         },
         { /// vertex storage buffer
             binding: 1,
-            visibility: GPUShaderStage.VERTEX | GPUBufferUsage.FRAGMENT,
+            visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
             buffer: {
                 type: 'read-only-storage',
             }
@@ -263,7 +263,7 @@ const gridBindGroup = device.createBindGroup({
 
 const colorAttachment = {
     view: null,
-    clearValue: {r: 0, g: 0, b: 0, a: 1},
+    clearValue: {r: 0.8, g: 0.8, b: 0.8, a: 1},
     loadOp: 'clear',
     loadValue: {r: 0, g: 0, b: 0, a: 1},
     storeOp: 'store',

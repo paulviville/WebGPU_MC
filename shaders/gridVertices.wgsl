@@ -6,14 +6,12 @@ struct Vertex {
 @group(0) @binding(0)
 var <storage, read_write> vertices : array<Vertex>;
 
-override Xmin : f32 = -1.0;
-override Ymin : f32 = -1.0;
-override Zmin : f32 = -1.0;
+
 const Min : vec3f = vec3<f32>(-1.0,-1.0,-1.0);
 override STEP : f32 = 2.0 / 16.0;
-override X : u32 = 32u;
-override Y : u32 = 32u;
-override Z : u32 = 32u;
+override X : u32 = 64u;
+override Y : u32 = 64u;
+override Z : u32 = 64u;
 // override NbVertices = 33u * 33u * 33u;
 
 fn computeVertexId(globalId: u32) -> vec3u {
