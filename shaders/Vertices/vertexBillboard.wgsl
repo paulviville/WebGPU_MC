@@ -52,7 +52,7 @@ fn vertex(input: VertexInput) -> VertexOutput {
     var color = vec4f(0.0, 0.0, 0.0, 1.0);
     if(vertices[input.instance].value > 0) {
         color.g = 1.0;
-        position *= 0.125;
+        position *= 0.0625;
     }
     else {
         color.r = 1.0;
@@ -82,5 +82,4 @@ fn fragment(input : FragmentInput) -> FragmentOutput {
     let wPos = uniforms.camera.projection * vec4f(P, 1.0);
     output.depth = (wPos.z / wPos.w + 1.0) / 2.0;
     return output;
-    // frag_depth
 }

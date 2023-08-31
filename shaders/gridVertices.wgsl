@@ -7,12 +7,15 @@ struct Vertex {
 var <storage, read_write> vertices : array<Vertex>;
 
 
-const Min : vec3f = vec3<f32>(-1.0,-1.0,-1.0);
+const Min : vec3f = vec3f(-1.0,-1.0,-1.0);
+const Max : vec3f = vec3f(1.0,1.0,1.0);
 override STEP : f32 = 2.0 / 16.0;
 override X : u32 = 64u;
 override Y : u32 = 64u;
 override Z : u32 = 64u;
 // override NbVertices = 33u * 33u * 33u;
+
+//const step : vec3f = vec3f
 
 fn computeVertexId(globalId: u32) -> vec3u {
     var id = globalId;

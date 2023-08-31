@@ -133,6 +133,10 @@ function edgeCoord(e) {
     e_ = e_ % B;
     let y = Math.floor(e_ / C);
     let x = e_ % C;
+
+    console.log(e)
+    console.log(x,y,z, vertex(x,y,z));
+    console.log(x+Ex,y+Ey,z+Ez, vertex(x+Ex,y+Ey,z+Ez));
     return {x, y, z};
 }
 

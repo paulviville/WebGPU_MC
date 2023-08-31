@@ -24,6 +24,13 @@ const nbEdges = X*(Y+1)*(Z+1) + (X+1)*Y*(Z+1) + (X+1)*(Y+1)*Z;
 const nbFaces = X*Y*(Z+1) + (X+1)*Y*Z + X*(Y+1)*Z;
 const nbCubes = X*Y*Z;
 
+console.log(`grid: ${X}x${Y}x${Z}
+nb vertices: ${nbVertices}
+nb edges: ${nbEdges}
+nb faces: ${nbFaces}
+nb cubes: ${nbCubes}
+`)
+
 
 // initializing webgpu
 if(!navigator.gpu) throw Error("No GPU");
@@ -97,12 +104,149 @@ const bindGroup = device.createBindGroup({
 
 
 
+
+
+
+const edgeComputeShaderCode = await fetch("./shaders/Edges/activeEdges.wgsl").then((response) => response.text())
+const edgeComputemodule = device.createShaderModule({
+    label: 'edge compute shader module',
+    code: edgeComputeShaderCode,
+});
+
+
+
+const edgeIdStorageBuffer = device.createBuffer({
+    label: "edge id storage buffer",
+    size: nbEdges * Uint32Array.BYTES_PER_ELEMENT,
+    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
+});
+
+const edgeOffStorageBuffer = device.createBuffer({
+    label: "edge chunk offset storage buffer",
+    size: nbEdges * Uint32Array.BYTES_PER_ELEMENT,
+    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
+});
+
+const edgeIdStagingBuffer = device.createBuffer({
+    label: "edge id staging buffer",
+    size: nbEdges * Uint32Array.BYTES_PER_ELEMENT,
+    usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
+});
+
+const chunkSize = 64
+const nbChunks = Math.ceil(nbEdges / chunkSize);
+const chunkActiveEdgesStorageBuffer = device.createBuffer({
+    label: "nb edges/chunk storage buffer",
+    size: (nbChunks+1) * Uint32Array.BYTES_PER_ELEMENT,
+    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
+});
+
+const chunkActiveEdgesStagingBuffer = device.createBuffer({
+    label: "nb edges/chunk staging buffer",
+    size: (nbChunks+1) * Uint32Array.BYTES_PER_ELEMENT,
+    usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
+});
+
+
+
+const edgeComputeBindGroupLayout = device.createBindGroupLayout({
+    label: 'edge compute bindgroup layout',
+    entries: [{
+        binding: 0,
+        visibility: GPUShaderStage.COMPUTE,
+        buffer: {
+            type: 'read-only-storage',
+        },   
+    },
+    {
+        binding: 1,
+        visibility: GPUShaderStage.COMPUTE,
+        buffer: {
+            type: 'storage',
+        },
+    },
+    {
+        binding: 2,
+        visibility: GPUShaderStage.COMPUTE,
+        buffer: {
+            type: 'storage',
+        },
+    }],
+});
+
+const EdgeActiveComputePipeline = device.createComputePipeline({
+    label: 'edge active compute pipeline',
+    layout: device.createPipelineLayout({
+        bindGroupLayouts: [edgeComputeBindGroupLayout],
+    }),
+    compute: {
+        module: edgeComputemodule,
+        entryPoint: "markActiveEdges",
+        constants: {
+            X: X,
+            Y: Y,
+            // Z: Z,
+        }
+    },
+});
+
+const EdgePerChunkComputePipeline = device.createComputePipeline({
+    label: 'edge per chunk compute pipeline',
+    layout: device.createPipelineLayout({
+        bindGroupLayouts: [edgeComputeBindGroupLayout],
+    }),
+    compute: {
+        module: edgeComputemodule,
+        entryPoint: "countEdgesPerChunk",
+        constants: {
+            X: X,
+            Y: Y,
+            Z: Z,
+            CHUNKSIZE: chunkSize,
+        }
+    },
+});
+
+const edgeIdComputeBindGroup = device.createBindGroup({
+    label: 'edge id compute bind group',
+    layout: edgeComputeBindGroupLayout,
+    entries: [{
+        binding: 0,
+        resource: {
+            buffer: vertexStorageBuffer,
+        },
+    },
+    {
+        binding: 1,
+        resource: {
+            buffer: edgeIdStorageBuffer,
+        },
+    },
+    {
+        binding: 2,
+        resource: {
+            buffer: chunkActiveEdgesStorageBuffer,
+        },
+    }],
+});
+
+
+
 const commandEncoder = device.createCommandEncoder();
 const passEncoder = commandEncoder.beginComputePass();
 
 passEncoder.setPipeline(pipeline);
 passEncoder.setBindGroup(0, bindGroup);
 passEncoder.dispatchWorkgroups(Math.ceil(nbVertices / 64));
+
+passEncoder.setPipeline(EdgeActiveComputePipeline);
+passEncoder.setBindGroup(0, edgeIdComputeBindGroup);
+passEncoder.dispatchWorkgroups(Math.ceil(nbEdges / 64));
+
+passEncoder.setPipeline(EdgePerChunkComputePipeline);
+passEncoder.dispatchWorkgroups(Math.ceil(nbChunks / 64));
+
+
 passEncoder.end();
 
 console.log(Math.ceil(nbVertices / 64))
@@ -115,6 +259,22 @@ commandEncoder.copyBufferToBuffer(
     nbVertices * 4 * Float32Array.BYTES_PER_ELEMENT   
 );
 
+commandEncoder.copyBufferToBuffer(
+    edgeIdStorageBuffer,
+    0,
+    edgeIdStagingBuffer,
+    0,
+    nbEdges * Uint32Array.BYTES_PER_ELEMENT,
+)
+
+commandEncoder.copyBufferToBuffer(
+    chunkActiveEdgesStorageBuffer,
+    0,
+    chunkActiveEdgesStagingBuffer,
+    0,
+    (nbChunks +1) * Uint32Array.BYTES_PER_ELEMENT,
+)
+
 const commands = commandEncoder.finish();
 device.queue.submit([commands]);
 
@@ -123,31 +283,35 @@ await vertexStagingBuffer.mapAsync(
     0, //offset
     nbVertices * 4 * Float32Array.BYTES_PER_ELEMENT
 );
-const copyArrayBuffer = vertexStagingBuffer.getMappedRange(0, nbVertices * 4 * Float32Array.BYTES_PER_ELEMENT);
+
+
+
+await edgeIdStagingBuffer.mapAsync(
+    GPUMapMode.READ,
+    0, //offset
+    nbEdges * Uint32Array.BYTES_PER_ELEMENT
+);
+const copyArrayBuffer = edgeIdStagingBuffer.getMappedRange(0, nbEdges*Uint32Array.BYTES_PER_ELEMENT);
 const data = copyArrayBuffer.slice();
 console.log(copyArrayBuffer.slice())
-vertexStagingBuffer.unmap();
-// console.log(new Float32Array(data))
-const testArray = new Float32Array(data)
-// console.log(nbVertices * 4 * Float32Array.BYTES_PER_ELEMENT)
-// console.log(testArray.length)
+edgeIdStagingBuffer.unmap();
+let t = [...(new Uint32Array(data))].filter(u => u != 4294967295)
 
-// function vertId (i) {
-//     let id = i;
-//     let z = id / ((X+1))
-// }
-
-// for(let i = 0; i < testArray.length; i += 4) {
-//     console.log(`(${testArray[i]}, ${testArray[i+1]}, ${testArray[i+2]}) -> ${testArray[i+3].toPrecision(2)}`)
-// }
+console.log(t)
 
 
+await chunkActiveEdgesStagingBuffer.mapAsync(
+    GPUMapMode.READ,
+    0, //offset
+    (nbChunks + 1) * Uint32Array.BYTES_PER_ELEMENT
+);
+const copyArrayBuffer2 = chunkActiveEdgesStagingBuffer.getMappedRange(0, (nbChunks+1)*Uint32Array.BYTES_PER_ELEMENT);
+const data2 = copyArrayBuffer2.slice();
+console.log(copyArrayBuffer2.slice())
+edgeIdStagingBuffer.unmap();
+let t2 = [...(new Uint32Array(data2))]//.filter(u => u != 4294967295)
 
-
-
-
-
-
+console.log(t2)
 
 
 
