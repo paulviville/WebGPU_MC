@@ -35,6 +35,7 @@ fn computeVertexValue(pos: vec3f) -> f32 {
 
 @compute @workgroup_size(64)
 fn main(@builtin(global_invocation_id) global_id : vec3<u32>) {
+    _ = Z;
     if(global_id.x >= arrayLength(&vertices)) {
         return;
     }

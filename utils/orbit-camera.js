@@ -23,7 +23,7 @@ export class OrbitCamera {
     }
 
     update() {
-        this.#camera.getComponentOfType(OrbitController).update();
+        return this.#camera.getComponentOfType(OrbitController).update();
     }
 
     get position() {

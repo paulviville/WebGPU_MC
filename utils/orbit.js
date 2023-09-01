@@ -47,7 +47,7 @@ export class OrbitController {
     update() {
         const transform = this.#node.getComponentOfType(Transform);
         if (!transform) {
-            return;
+            return false;
         }
 
         const rotation = quat.create();
@@ -59,6 +59,8 @@ export class OrbitController {
         vec3.rotateX(translation, translation, [0, 0, 0], this.#pitch);
         vec3.rotateY(translation, translation, [0, 0, 0], this.#yaw);
         transform.translation = translation;
+
+        return true;
     }
 
     #initHandlers() {

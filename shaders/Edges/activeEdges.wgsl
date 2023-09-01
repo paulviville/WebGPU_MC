@@ -9,13 +9,18 @@ var <storage, read> vertices : array<Vertex>;
 var <storage, read_write> edgesId : array<u32>;
 @group(0) @binding(2)
 var<storage, read_write> chunkEdges : array<u32>;
+@group(0) @binding(3)
+var<storage, read_write> edgeChunkOffset : array<u32>;
+@group(0) @binding(4)
+var<storage, read_write> edgeMid : array<vec3f>;
 
+const INVALID = 0u - 1u;
 const Min : vec3f = vec3f(-1.0,-1.0,-1.0);
 const Max : vec3f = vec3f(1.0,1.0,1.0);
 override STEP : f32 = 2.0 / 16.0;
-override X : u32 = 64u;
-override Y : u32 = 64u;
-override Z : u32 = 64u;
+override X : u32 = 16u;
+override Y : u32 = 16u;
+override Z : u32 = 16u;
 override NbVertices = (X+1) * (Y+1) * (Z+1);
 override CHUNKSIZE = 64u;
 //const step : vec3f = vec3f
@@ -72,8 +77,8 @@ fn markActiveEdges(@builtin(global_invocation_id) global_id : vec3<u32>) {
 
     let axis = vec3u(
         u32(global_id.x < nbX),
-        u32(global_id.x < nbY + nbX && global_id.x >= nbX),
-        u32(global_id.x >= nbX + nbY)
+        u32((global_id.x < nbY + nbX) && global_id.x >= nbX),
+        u32(global_id.x >= (nbX + nbY))
     );
 
     let v0 = vertices[vertexId(cell)].value;
@@ -82,7 +87,7 @@ fn markActiveEdges(@builtin(global_invocation_id) global_id : vec3<u32>) {
     if((v0 * v1) <= 0.0) {
         edgesId[global_id.x] = global_id.x; 
     } else {
-        edgesId[global_id.x] = 0u - 1u;
+        edgesId[global_id.x] = INVALID;
     }
 }
 
@@ -93,7 +98,68 @@ fn countEdgesPerChunk(@builtin(global_invocation_id) global_id : vec3<u32>) {
     _ = Z;
 
     /// first edge of chunk
-    var offset = global_id.x * CHUNKSIZE;
+    let chunkOffset = global_id.x * CHUNKSIZE;
+    var localOffset = 0u;
+    for(var i = 0u; i < CHUNKSIZE; i++) {
+        if(edgesId[chunkOffset + i] != INVALID) {
+            edgeChunkOffset[chunkOffset + i] = localOffset;
+            localOffset++;
+        } else {
+            edgeChunkOffset[chunkOffset + i] = INVALID;
+        }
+    }
 
-    chunkEdges[global_id.x] = CHUNKSIZE;
+    chunkEdges[global_id.x] = localOffset;
+}
+
+@compute @workgroup_size(1)
+fn reduceEdgeCount() {
+    _ = X;
+    _ = Y;
+    _ = Z;
+    _ = CHUNKSIZE;
+
+    var off0 = chunkEdges[0];
+    var off1 = 0u;
+    chunkEdges[0] = 0;
+    for(var i = 0u; i < arrayLength(&chunkEdges) - 1; i++) {
+        off1 = chunkEdges[i+1];
+        chunkEdges[i+1] = chunkEdges[i] + off0;
+        off0 = off1;
+    }
+}
+
+@compute @workgroup_size(64)
+fn completeEdgeOffsets(@builtin(global_invocation_id) global_id : vec3<u32>) {
+    if(global_id.x >= arrayLength(&edgesId)
+        || edgesId[global_id.x] == INVALID) {
+        return;
+    }
+
+    let chunkId = global_id.x / CHUNKSIZE;
+    let chunkOffset = chunkEdges[chunkId];
+
+    edgeChunkOffset[global_id.x] += chunkOffset ;
+}
+
+@compute @workgroup_size(64)
+fn computEdgeMid(@builtin(global_invocation_id) global_id : vec3<u32>) {
+    if(global_id.x >= arrayLength(&edgesId)
+        || edgesId[global_id.x] == INVALID) {
+        return;
+    }
+
+    let cell = edgeCell(global_id.x);
+
+    let axis = vec3u(
+        u32(global_id.x < nbX),
+        u32((global_id.x < nbY + nbX) && global_id.x >= nbX),
+        u32(global_id.x >= (nbX + nbY))
+    );
+
+    let v0 = vertices[vertexId(cell)].position;
+    let v1 = vertices[vertexId(cell+axis)].position;
+
+    let offset = edgeChunkOffset[global_id.x];
+    edgeMid[offset] = (v0 + v1) / 2.0;
 }
