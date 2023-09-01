@@ -157,9 +157,12 @@ fn computEdgeMid(@builtin(global_invocation_id) global_id : vec3<u32>) {
         u32(global_id.x >= (nbX + nbY))
     );
 
-    let v0 = vertices[vertexId(cell)].position;
-    let v1 = vertices[vertexId(cell+axis)].position;
+    
+    let v0 = vertices[vertexId(cell)];
+    let v1 = vertices[vertexId(cell+axis)];
+    let dist = abs(v0.value) + abs(v1.value);
 
     let offset = edgeChunkOffset[global_id.x];
-    edgeMid[offset] = (v0 + v1) / 2.0;
+    edgeMid[offset] = mix(v0.position, v1.position, abs(v0.value)/dist);
+    // edgeMid[offset] = (v0.position + v1.position) / 2.0;
 }

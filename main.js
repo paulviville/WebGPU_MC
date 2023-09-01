@@ -357,13 +357,13 @@ passEncoder.end();
 //     nbEdges * Uint32Array.BYTES_PER_ELEMENT,
 // )
 
-// commandEncoder.copyBufferToBuffer(
-//     chunkActiveEdgesStorageBuffer,
-//     0,
-//     chunkActiveEdgesStagingBuffer,
-//     0,
-//     (nbChunks +1) * Uint32Array.BYTES_PER_ELEMENT,   
-// )
+commandEncoder.copyBufferToBuffer(
+    chunkActiveEdgesStorageBuffer,
+    0,
+    chunkActiveEdgesStagingBuffer,
+    0,
+    (nbChunks +1) * Uint32Array.BYTES_PER_ELEMENT,   
+)
 
 // commandEncoder.copyBufferToBuffer(
 //     edgeMidStorageBuffer,
@@ -379,11 +379,11 @@ device.queue.submit([commands]);
 let p1 = performance.now();
 
 console.log(p0, p1, p1 - p0);
-await vertexStagingBuffer.mapAsync(
-    GPUMapMode.READ,
-    0, //offset
-    nbVertices * 4 * Float32Array.BYTES_PER_ELEMENT
-);
+// await vertexStagingBuffer.mapAsync(
+//     GPUMapMode.READ,
+//     0, //offset
+//     nbVertices * 4 * Float32Array.BYTES_PER_ELEMENT
+// );
 
 // const copyArrayBuffer0 = vertexStagingBuffer.getMappedRange(0, nbVertices * 4 * Float32Array.BYTES_PER_ELEMENT);
 // const vertexData = copyArrayBuffer0.slice();
@@ -391,18 +391,18 @@ await vertexStagingBuffer.mapAsync(
 // let vertexArray = [...(new Float32Array(vertexData))];
 // console.log(vertexArray)
 
-await edgeIdStagingBuffer.mapAsync(
-    GPUMapMode.READ,
-    0, //offset
-    nbEdges * Uint32Array.BYTES_PER_ELEMENT
-);
-const copyArrayBuffer = edgeIdStagingBuffer.getMappedRange(0, nbEdges*Uint32Array.BYTES_PER_ELEMENT);
-const data = copyArrayBuffer.slice();
-console.log(copyArrayBuffer.slice())
-edgeIdStagingBuffer.unmap();
-let t = [...(new Uint32Array(data))].filter(u => u != 4294967295)
+// await edgeIdStagingBuffer.mapAsync(
+//     GPUMapMode.READ,
+//     0, //offset
+//     nbEdges * Uint32Array.BYTES_PER_ELEMENT
+// );
+// const copyArrayBuffer = edgeIdStagingBuffer.getMappedRange(0, nbEdges*Uint32Array.BYTES_PER_ELEMENT);
+// const data = copyArrayBuffer.slice();
+// console.log(copyArrayBuffer.slice())
+// edgeIdStagingBuffer.unmap();
+// let t = [...(new Uint32Array(data))].filter(u => u != 4294967295)
 
-console.log(t)
+// console.log(t)
 
 
 await chunkActiveEdgesStagingBuffer.mapAsync(
@@ -413,7 +413,7 @@ await chunkActiveEdgesStagingBuffer.mapAsync(
 const copyArrayBuffer2 = chunkActiveEdgesStagingBuffer.getMappedRange(0, (nbChunks+1)*Uint32Array.BYTES_PER_ELEMENT);
 const data2 = copyArrayBuffer2.slice();
 console.log(copyArrayBuffer2.slice())
-edgeIdStagingBuffer.unmap();
+chunkActiveEdgesStagingBuffer.unmap();
 let t2 = [...(new Uint32Array(data2))]//.filter(u => u != 4294967295)
 
 console.log(t2)
@@ -478,19 +478,19 @@ function edgeVertices(e) {
 //     console.log(activeEdges)
 
 
-await edgeMidStagingBuffer.mapAsync(
-    GPUMapMode.READ,
-    0, //offset
-    nbEdges * 4* Float32Array.BYTES_PER_ELEMENT
-);
+// await edgeMidStagingBuffer.mapAsync(
+//     GPUMapMode.READ,
+//     0, //offset
+//     nbEdges * 4* Float32Array.BYTES_PER_ELEMENT
+// );
 
-const copyMidArrayBuffer = edgeMidStagingBuffer.getMappedRange(0, nbEdges * 4* Float32Array.BYTES_PER_ELEMENT);
-const dataMid = copyMidArrayBuffer.slice();
-console.log(copyMidArrayBuffer.slice())
-edgeMidStagingBuffer.unmap();
-let tMid = [...(new Float32Array(dataMid))]//.filter(u => u != 0)
+// const copyMidArrayBuffer = edgeMidStagingBuffer.getMappedRange(0, nbEdges * 4* Float32Array.BYTES_PER_ELEMENT);
+// const dataMid = copyMidArrayBuffer.slice();
+// console.log(copyMidArrayBuffer.slice())
+// edgeMidStagingBuffer.unmap();
+// let tMid = [...(new Float32Array(dataMid))]//.filter(u => u != 0)
 
-console.log(tMid)
+// console.log(tMid)
 
 
 
@@ -733,6 +733,7 @@ function render() {
     // renderPass.drawIndexed(model.numIndices, nbVertices);
 
     renderPass.setBindGroup(0, edgeMidBindGroup);
+    // renderPass.drawIndexed(model.numIndices, 6528);
     renderPass.drawIndexed(model.numIndices, 1440);
 
 
