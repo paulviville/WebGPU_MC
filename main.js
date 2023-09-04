@@ -867,7 +867,7 @@ function render() {
     device.queue.submit([renderCommandEncoder.finish()]);
     // requestAnimationFrame(render)
 }
-render();
+// render();
 
 function loop () {
     if(camera.update()) {

@@ -41,12 +41,14 @@ export class OrbitController {
         this.#moveSensitivity = moveSensitivity;
         this.#zoomSensitivity = zoomSensitivity;
 
+		this.changed = true;
+
         this.#initHandlers();
     }
 
     update() {
         const transform = this.#node.getComponentOfType(Transform);
-        if (!transform) {
+        if (!transform || !this.changed) {
             return false;
         }
 
@@ -59,7 +61,7 @@ export class OrbitController {
         vec3.rotateX(translation, translation, [0, 0, 0], this.#pitch);
         vec3.rotateY(translation, translation, [0, 0, 0], this.#yaw);
         transform.translation = translation;
-
+		this.changed = false
         return true;
     }
 
@@ -90,6 +92,7 @@ export class OrbitController {
     }
 
     #handlePointerMoveEvent(e) {
+		this.changed = true;
         const dx = e.movementX;
         const dy = e.movementY;
 
