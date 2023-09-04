@@ -158,6 +158,47 @@ const edgeMidStagingBuffer = device.createBuffer({
     usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
 });
 
+const rawTriStorageBuffer = device.createBuffer({
+    label: "raw triangles storage buffer",
+    size: nbCubes * 15 * Uint32Array.BYTES_PER_ELEMENT,
+    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
+});
+
+const rawTriStagingBuffer = device.createBuffer({
+    label: "raw triangles staging buffer",
+    size: nbCubes * 15 * Uint32Array.BYTES_PER_ELEMENT,
+    usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
+});
+
+const cubeChunkSize = 64
+const nbCubeChunks = Math.ceil(nbCubes / chunkSize);
+const cubeCountChunkStorageBuffer = device.createBuffer({
+    label: "nb edges/chunk storage buffer",
+    size: (nbCubeChunks+1) * Uint32Array.BYTES_PER_ELEMENT,
+    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
+});
+
+const cubeCountChunkStagingBuffer = device.createBuffer({
+    label: "nb edges/chunk staging buffer",
+    size: (nbCubeChunks+1) * Uint32Array.BYTES_PER_ELEMENT,
+    usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
+});
+
+
+
+
+const triIndexStorageBuffer = device.createBuffer({
+    label: "sorted triangles storage buffer",
+    size: nbCubes * 15 * Uint32Array.BYTES_PER_ELEMENT,
+    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.INDEX,
+});
+
+const triIndexStagingBuffer = device.createBuffer({
+    label: "sorted staging buffer",
+    size: nbCubes * 15 * Uint32Array.BYTES_PER_ELEMENT,
+    usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
+});
+
 
 
 const edgeComputeBindGroupLayout = device.createBindGroupLayout({
@@ -192,6 +233,13 @@ const edgeComputeBindGroupLayout = device.createBindGroupLayout({
     },
     {
         binding: 4,
+        visibility: GPUShaderStage.COMPUTE,
+        buffer: {
+            type: 'storage',
+        },
+    },
+    {
+        binding: 5,
         visibility: GPUShaderStage.COMPUTE,
         buffer: {
             type: 'storage',
@@ -275,6 +323,37 @@ const edgeMidPipeline = device.createComputePipeline({
     },
 });
 
+const cellTrianglesComputePipeline = device.createComputePipeline({
+    label: 'cube triangles compute pipeline',
+    layout: device.createPipelineLayout({
+        bindGroupLayouts: [edgeComputeBindGroupLayout],
+    }),
+    compute: {
+        module: edgeComputemodule,
+        entryPoint: "computeCellTriangles",
+        constants: {
+            X: X,
+            Y: Y,
+            Z: Z,
+        }
+    },
+});
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 const edgeIdComputeBindGroup = device.createBindGroup({
     label: 'edge id compute bind group',
     layout: edgeComputeBindGroupLayout,
@@ -307,6 +386,12 @@ const edgeIdComputeBindGroup = device.createBindGroup({
         resource: {
             buffer: edgeMidStorageBuffer,
         },
+    },
+    {
+        binding: 5,
+        resource: {
+            buffer: rawTriStorageBuffer,
+        },
     }],
 });
 
@@ -336,6 +421,9 @@ passEncoder.dispatchWorkgroups(Math.ceil(nbEdges / 64));
 
 passEncoder.setPipeline(edgeMidPipeline);
 passEncoder.dispatchWorkgroups(Math.ceil(nbEdges / 64));
+
+passEncoder.setPipeline(cellTrianglesComputePipeline);
+passEncoder.dispatchWorkgroups(Math.ceil(nbCubes / 64));
 
 
 passEncoder.end();
@@ -373,6 +461,14 @@ commandEncoder.copyBufferToBuffer(
 //     nbEdges * 4 * Float32Array.BYTES_PER_ELEMENT   
 // );
 
+commandEncoder.copyBufferToBuffer(
+    rawTriStorageBuffer,
+    0,
+    rawTriStagingBuffer,
+    0,
+    nbCubes * 15 * Uint32Array.BYTES_PER_ELEMENT,   
+)
+
 
 const commands = commandEncoder.finish();
 device.queue.submit([commands]);
@@ -405,18 +501,41 @@ console.log(p0, p1, p1 - p0);
 // console.log(t)
 
 
-await chunkActiveEdgesStagingBuffer.mapAsync(
+// await chunkActiveEdgesStagingBuffer.mapAsync(
+//     GPUMapMode.READ,
+//     0, //offset
+//     (nbChunks + 1) * Uint32Array.BYTES_PER_ELEMENT
+// );
+// const copyArrayBuffer2 = chunkActiveEdgesStagingBuffer.getMappedRange(0, (nbChunks+1)*Uint32Array.BYTES_PER_ELEMENT);
+// const data2 = copyArrayBuffer2.slice();
+// console.log(copyArrayBuffer2.slice())
+// chunkActiveEdgesStagingBuffer.unmap();
+// let t2 = [...(new Uint32Array(data2))]//.filter(u => u != 4294967295)
+
+// // console.log(t2)
+
+
+
+await rawTriStagingBuffer.mapAsync(
     GPUMapMode.READ,
     0, //offset
-    (nbChunks + 1) * Uint32Array.BYTES_PER_ELEMENT
+    nbCubes * 15 * Uint32Array.BYTES_PER_ELEMENT
 );
-const copyArrayBuffer2 = chunkActiveEdgesStagingBuffer.getMappedRange(0, (nbChunks+1)*Uint32Array.BYTES_PER_ELEMENT);
-const data2 = copyArrayBuffer2.slice();
-console.log(copyArrayBuffer2.slice())
-chunkActiveEdgesStagingBuffer.unmap();
-let t2 = [...(new Uint32Array(data2))]//.filter(u => u != 4294967295)
+const copyArrayBufferCubes = rawTriStagingBuffer.getMappedRange(0, nbCubes * 15 * Uint32Array.BYTES_PER_ELEMENT);
+const dataCubes = copyArrayBufferCubes.slice();
+console.log(copyArrayBufferCubes.slice())
+rawTriStagingBuffer.unmap();
+let tCubes = [...(new Uint32Array(dataCubes))]//.filter(u => u != 4294967295)
 
-console.log(t2)
+console.log(tCubes)
+
+
+
+
+
+
+
+
 
 
 let activeEdges = [];
