@@ -18,7 +18,7 @@ console.log("WebGPU_MC")
 //    0 +-------------+ 1             +------0------+         
 //
 // grid dimensions
-const X = 16, Y = 16, Z = 16;
+const X = 64, Y = 64, Z = 64;
 const nbVertices = (X+1) * (Y+1) * (Z+1);
 const nbEdges = X*(Y+1)*(Z+1) + (X+1)*Y*(Z+1) + (X+1)*(Y+1)*Z;
 const nbFaces = X*Y*(Z+1) + (X+1)*Y*Z + X*(Y+1)*Z;
@@ -112,6 +112,11 @@ const edgeComputemodule = device.createShaderModule({
     code: edgeComputeShaderCode,
 });
 
+const indexBufferComputeShaderCode = await fetch("./shaders/Edges/indexBuffer.wgsl").then((response) => response.text())
+const indexBufferComputemodule = device.createShaderModule({
+    label: 'indexBuffer compute shader module',
+    code: indexBufferComputeShaderCode,
+});
 
 
 const edgeIdStorageBuffer = device.createBuffer({
@@ -171,7 +176,7 @@ const rawTriStagingBuffer = device.createBuffer({
 });
 
 const cubeChunkSize = 64
-const nbCubeChunks = Math.ceil(nbCubes / chunkSize);
+const nbCubeChunks = Math.ceil((nbCubes *15)/ chunkSize);
 const cubeCountChunkStorageBuffer = device.createBuffer({
     label: "nb edges/chunk storage buffer",
     size: (nbCubeChunks+1) * Uint32Array.BYTES_PER_ELEMENT,
@@ -185,6 +190,17 @@ const cubeCountChunkStagingBuffer = device.createBuffer({
 });
 
 
+const triIndexOffsetStorageBuffer = device.createBuffer({
+    label: "sorted triangles storage buffer",
+    size: nbCubes * 15 * Uint32Array.BYTES_PER_ELEMENT,
+    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.INDEX,
+});
+
+const triIndexOffsetStagingBuffer = device.createBuffer({
+    label: "sorted staging buffer",
+    size: nbCubes * 15 * Uint32Array.BYTES_PER_ELEMENT,
+    usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
+});
 
 
 const triIndexStorageBuffer = device.createBuffer({
@@ -244,8 +260,71 @@ const edgeComputeBindGroupLayout = device.createBindGroupLayout({
         buffer: {
             type: 'storage',
         },
-    }],
+    },
+    {
+        binding: 6,
+        visibility: GPUShaderStage.COMPUTE,
+        buffer: {
+            type: 'storage',
+        },
+    },
+    {
+        binding: 7,
+        visibility: GPUShaderStage.COMPUTE,
+        buffer: {
+            type: 'storage',
+        },
+    }
+],
 });
+
+const indexBufferComputeBindGroupLayout = device.createBindGroupLayout({
+    label: 'index buffer compute bindgroup layout',
+    entries: [{
+        binding: 0,
+        visibility: GPUShaderStage.COMPUTE,
+        buffer: {
+            type: 'read-only-storage',
+        },   
+    },
+    {
+        binding: 1,
+        visibility: GPUShaderStage.COMPUTE,
+        buffer: {
+            type: 'storage',
+        },
+    },
+    {
+        binding: 2,
+        visibility: GPUShaderStage.COMPUTE,
+        buffer: {
+            type: 'storage',
+        },
+    },
+    {
+        binding: 3,
+        visibility: GPUShaderStage.COMPUTE,
+        buffer: {
+            type: 'storage',
+        },
+    },
+    {
+        binding: 4,
+        visibility: GPUShaderStage.COMPUTE,
+        buffer: {
+            type: 'storage',
+        },
+    },
+    {
+        binding: 5,
+        visibility: GPUShaderStage.COMPUTE,
+        buffer: {
+            type: 'storage',
+        },
+    },
+],
+});
+
 
 const EdgeActiveComputePipeline = device.createComputePipeline({
     label: 'edge active compute pipeline',
@@ -339,15 +418,75 @@ const cellTrianglesComputePipeline = device.createComputePipeline({
     },
 });
 
+const countTrianglesPerChunkPipeline = device.createComputePipeline({
+    label: 'edge per chunk compute pipeline',
+    layout: device.createPipelineLayout({
+        bindGroupLayouts: [edgeComputeBindGroupLayout],
+    }),
+    compute: {
+        module: edgeComputemodule,
+        entryPoint: "countTrianglesPerChunk",
+        constants: {
+            X: X,
+            Y: Y,
+            Z: Z,
+            CHUNKSIZE: chunkSize,
+        }
+    },
+});
+
+const reduceTriangleCountPipeline = device.createComputePipeline({
+    label: 'edge per chunk compute pipeline',
+    layout: device.createPipelineLayout({
+        bindGroupLayouts: [edgeComputeBindGroupLayout],
+    }),
+    compute: {
+        module: edgeComputemodule,
+        entryPoint: "reduceTriangleCount",
+        constants: {
+            X: X,
+            Y: Y,
+            Z: Z,
+            CHUNKSIZE: chunkSize,
+        }
+    },
+});
+
+const indexOffsetPipeline = device.createComputePipeline({
+    label: 'edge per chunk compute pipeline',
+    layout: device.createPipelineLayout({
+        bindGroupLayouts: [edgeComputeBindGroupLayout],
+    }),
+    compute: {
+        module: edgeComputemodule,
+        entryPoint: "completeTriangleOffsets",
+        constants: {
+            X: X,
+            Y: Y,
+            Z: Z,
+            CHUNKSIZE: chunkSize,
+        }
+    },
+});
 
 
 
-
-
-
-
-
-
+const copyToIndexBufferPipeline = device.createComputePipeline({
+    label: 'copy to index buffer chunk compute pipeline',
+    layout: device.createPipelineLayout({
+        bindGroupLayouts: [indexBufferComputeBindGroupLayout],
+    }),
+    compute: {
+        module: indexBufferComputemodule,
+        entryPoint: "copyToIndexBuffer",
+        constants: {
+            X: X,
+            Y: Y,
+            Z: Z,
+            CHUNKSIZE: chunkSize,
+        }
+    },
+});
 
 
 
@@ -392,7 +531,68 @@ const edgeIdComputeBindGroup = device.createBindGroup({
         resource: {
             buffer: rawTriStorageBuffer,
         },
-    }],
+    },
+    {
+        binding: 6,
+        resource: {
+            buffer: cubeCountChunkStorageBuffer,
+        },
+    },
+    {
+        binding: 7,
+        resource: {
+            buffer: triIndexOffsetStorageBuffer,
+        },
+    },
+    // {
+    //     binding: 8,
+    //     resource: {
+    //         buffer: triIndexStorageBuffer,
+    //     },
+    // }
+],
+});
+
+const indexBufferComputeBindGroup = device.createBindGroup({
+    label: 'index buffer compute bind group',
+    layout: indexBufferComputeBindGroupLayout,
+    entries: [{
+        binding: 0,
+        resource: {
+            buffer: vertexStorageBuffer,
+        },
+    },
+    {
+        binding: 1,
+        resource: {
+            buffer: edgeOffsetStorageBuffer,
+        },
+    },
+    {
+        binding: 2,
+        resource: {
+            buffer: rawTriStorageBuffer,
+        },
+    },
+    {
+        binding: 3,
+        resource: {
+            buffer: cubeCountChunkStorageBuffer,
+        },
+    },
+    {
+        binding: 4,
+        resource: {
+            buffer: triIndexOffsetStorageBuffer,
+        },
+    },
+    {
+        binding: 5,
+        resource: {
+            buffer: triIndexStorageBuffer,
+        },
+    }
+],
 });
 
 
@@ -425,6 +625,22 @@ passEncoder.dispatchWorkgroups(Math.ceil(nbEdges / 64));
 passEncoder.setPipeline(cellTrianglesComputePipeline);
 passEncoder.dispatchWorkgroups(Math.ceil(nbCubes / 64));
 
+passEncoder.setPipeline(countTrianglesPerChunkPipeline);
+passEncoder.dispatchWorkgroups(Math.ceil(nbCubeChunks / 64));
+
+passEncoder.setPipeline(reduceTriangleCountPipeline);
+passEncoder.dispatchWorkgroups(1);
+
+passEncoder.setPipeline(indexOffsetPipeline);
+passEncoder.dispatchWorkgroups(Math.ceil((nbCubes*15) / 64));
+
+
+
+
+passEncoder.setBindGroup(0, indexBufferComputeBindGroup);
+passEncoder.setPipeline(copyToIndexBufferPipeline);
+passEncoder.dispatchWorkgroups(Math.ceil((nbCubes*15) / 64));
+
 
 passEncoder.end();
 
@@ -453,22 +669,46 @@ commandEncoder.copyBufferToBuffer(
     (nbChunks +1) * Uint32Array.BYTES_PER_ELEMENT,   
 )
 
+commandEncoder.copyBufferToBuffer(
+    edgeMidStorageBuffer,
+    0, //offset
+    edgeMidStagingBuffer,
+    0, // offset
+    nbEdges * 4 * Float32Array.BYTES_PER_ELEMENT   
+);
+
 // commandEncoder.copyBufferToBuffer(
-//     edgeMidStorageBuffer,
-//     0, //offset
-//     edgeMidStagingBuffer,
-//     0, // offset
-//     nbEdges * 4 * Float32Array.BYTES_PER_ELEMENT   
-// );
+//     rawTriStorageBuffer,
+//     0,
+//     rawTriStagingBuffer,
+//     0,
+//     nbCubes * 15 * Uint32Array.BYTES_PER_ELEMENT,   
+// )
+
+// commandEncoder.copyBufferToBuffer(
+//     triIndexOffsetStorageBuffer,
+//     0,
+//     triIndexOffsetStagingBuffer,
+//     0,
+//     nbCubes * 15 * Uint32Array.BYTES_PER_ELEMENT,   
+// )
 
 commandEncoder.copyBufferToBuffer(
-    rawTriStorageBuffer,
+    triIndexStorageBuffer,
     0,
-    rawTriStagingBuffer,
+    triIndexStagingBuffer,
     0,
     nbCubes * 15 * Uint32Array.BYTES_PER_ELEMENT,   
 )
 
+
+commandEncoder.copyBufferToBuffer(
+    cubeCountChunkStorageBuffer,
+    0,
+    cubeCountChunkStagingBuffer,
+    0,
+     (nbCubeChunks+1) * Uint32Array.BYTES_PER_ELEMENT
+)
 
 const commands = commandEncoder.finish();
 device.queue.submit([commands]);
@@ -501,95 +741,79 @@ console.log(p0, p1, p1 - p0);
 // console.log(t)
 
 
-// await chunkActiveEdgesStagingBuffer.mapAsync(
-//     GPUMapMode.READ,
-//     0, //offset
-//     (nbChunks + 1) * Uint32Array.BYTES_PER_ELEMENT
-// );
-// const copyArrayBuffer2 = chunkActiveEdgesStagingBuffer.getMappedRange(0, (nbChunks+1)*Uint32Array.BYTES_PER_ELEMENT);
-// const data2 = copyArrayBuffer2.slice();
-// console.log(copyArrayBuffer2.slice())
-// chunkActiveEdgesStagingBuffer.unmap();
-// let t2 = [...(new Uint32Array(data2))]//.filter(u => u != 4294967295)
-
-// // console.log(t2)
-
-
-
-await rawTriStagingBuffer.mapAsync(
+await chunkActiveEdgesStagingBuffer.mapAsync(
     GPUMapMode.READ,
     0, //offset
-    nbCubes * 15 * Uint32Array.BYTES_PER_ELEMENT
+    (nbChunks + 1) * Uint32Array.BYTES_PER_ELEMENT
 );
-const copyArrayBufferCubes = rawTriStagingBuffer.getMappedRange(0, nbCubes * 15 * Uint32Array.BYTES_PER_ELEMENT);
-const dataCubes = copyArrayBufferCubes.slice();
-console.log(copyArrayBufferCubes.slice())
-rawTriStagingBuffer.unmap();
-let tCubes = [...(new Uint32Array(dataCubes))]//.filter(u => u != 4294967295)
+const copyArrayBuffer2 = chunkActiveEdgesStagingBuffer.getMappedRange(0, (nbChunks+1)*Uint32Array.BYTES_PER_ELEMENT);
+const data2 = copyArrayBuffer2.slice();
+console.log(copyArrayBuffer2.slice())
+chunkActiveEdgesStagingBuffer.unmap();
+let t2 = [...(new Uint32Array(data2))]//.filter(u => u != 4294967295)
 
-console.log(tCubes)
-
-
-
-
+console.log(t2.slice(-1))
+const verticesCreated = t2.slice(-1);
+console.log("CREATED : " + verticesCreated + " Vertices");
 
 
+// await rawTriStagingBuffer.mapAsync(
+//     GPUMapMode.READ,
+//     0, //offset
+//     nbCubes * 15 * Uint32Array.BYTES_PER_ELEMENT
+// );
+// const copyArrayBufferCubes = rawTriStagingBuffer.getMappedRange(0, nbCubes * 15 * Uint32Array.BYTES_PER_ELEMENT);
+// const dataCubes = copyArrayBufferCubes.slice();
+// console.log(copyArrayBufferCubes.slice())
+// rawTriStagingBuffer.unmap();
+// let tCubes = [...(new Uint32Array(dataCubes))]//.filter(u => u != 4294967295)
+
+// console.log(tCubes)
+// console.log(tCubes.reduce((acc, curr) => acc + (curr != 4294967295  ? 1 : 0)))
+
+
+
+// const nbCubeChunks = Math.ceil(nbCubes / chunkSize);
+// const cubeCountChunkStorageBuffer = device.createBuffer({
+//     label: "nb edges/chunk storage buffer",
+//     size: (nbCubeChunks+1) * Uint32Array.BYTES_PER_ELEMENT,
+//     usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
+// });
+
+// await triIndexOffsetStagingBuffer.mapAsync(
+//     GPUMapMode.READ,
+//     0, //offset
+//     nbCubes * 15 * Uint32Array.BYTES_PER_ELEMENT
+// );
+// const copyArrayBufferIndex = triIndexOffsetStagingBuffer.getMappedRange(0, nbCubes * 15 * Uint32Array.BYTES_PER_ELEMENT);
+// const dataIndex = copyArrayBufferIndex.slice();
+// triIndexOffsetStagingBuffer.unmap();
+// let tindex = [...(new Uint32Array(dataIndex))]//.filter(u => u != 4294967295)
+
+// console.log(tindex)
+// console.log(tindex.reduce((acc, curr) => acc + (curr != 4294967295  ? 1 : 0)))
 
 
 
 
-let activeEdges = [];
+await cubeCountChunkStagingBuffer.mapAsync(
+    GPUMapMode.READ,
+    0, //offset
+    (nbCubeChunks+1) * Uint32Array.BYTES_PER_ELEMENT
+);
+const copyArrayBufferCuubeIDCount = cubeCountChunkStagingBuffer.getMappedRange(0, (nbCubeChunks+1) * Uint32Array.BYTES_PER_ELEMENT);
+const dataIdCount = copyArrayBufferCuubeIDCount.slice();
+cubeCountChunkStagingBuffer.unmap();
+let tCubeId = [...(new Uint32Array(dataIdCount))]//.filter(u => u != 4294967295)
 
-function vertex(x, y, z){
-    let v = x + (X+1) * y + (X+1)*(Y+1) * z
-    return v;
-    }
+// console.log(nbCubes)
+// console.log(tCubeId)
+const indicesCreated = tCubeId.splice(-1)[0];
+console.log("nb indices:" + indicesCreated);
 
-const nbX = (X)*(Y+1)*(Z+1);
-const nbY = (X+1)*(Y)*(Z+1);
-const nbZ = (X+1)*(Y+1)*(Z);
-function edgeCoord(e) {
-    const A = (e >= nbX) * nbX + (e >= (nbX + nbY)) * nbY;
-    const B = (X + (e > nbX)) * (Y + ((e < nbX) || (e > nbX + nbY)));
-    const C = X + (e > nbX)
+// console.log(tCubeId.reduce((acc, curr) => acc + curr))
 
 
-    const Ex = 1*(e < nbX);
-    const Ey = 1*(e < nbY + nbX && e >= nbX);
-    const Ez = 1*(e >= nbX + nbY);
-
-    let e_ = e - A;
-    let z = Math.floor(e_ / B)
-    e_ = e_ % B;
-    let y = Math.floor(e_ / C);
-    let x = e_ % C;
-
-    // console.log(e)
-    // console.log(x,y,z, vertex(x,y,z));
-    // console.log(x+Ex,y+Ey,z+Ez, vertex(x+Ex,y+Ey,z+Ez));
-    return {x, y, z};
-}
-
-function edgeVertices(e) {
-    let eCoord0 = edgeCoord(e);
-    let eCoord1 = edgeCoord(e);
-
-    if(e < nbX)
-        eCoord1.x += 1;
-    else if(e < nbY + nbX)
-        eCoord1.y += 1;
-    else
-        eCoord1.z += 1;
-
-    let v0 =vertex(eCoord0.x, eCoord0.y, eCoord0.z);
-    let v1 =vertex(eCoord1.x, eCoord1.y, eCoord1.z);
-
-    v0 = vertexArray[v0 + 3];
-    v1 = vertexArray[v1 + 3];
-    if(v0 * v1 < 0)
-        activeEdges.push({e, v0, v1});
-    // console.log(vertex(eCoord0.x, eCoord0.y, eCoord0.z), vertex(eCoord1.x, eCoord1.y, eCoord1.z))
-}
 
 // for(let i = 0; i < nbEdges; ++i) 
 //     edgeVertices(i)
@@ -597,22 +821,48 @@ function edgeVertices(e) {
 //     console.log(activeEdges)
 
 
-// await edgeMidStagingBuffer.mapAsync(
-//     GPUMapMode.READ,
-//     0, //offset
-//     nbEdges * 4* Float32Array.BYTES_PER_ELEMENT
-// );
+await edgeMidStagingBuffer.mapAsync(
+    GPUMapMode.READ,
+    0, //offset
+    nbEdges * 4* Float32Array.BYTES_PER_ELEMENT
+);
 
-// const copyMidArrayBuffer = edgeMidStagingBuffer.getMappedRange(0, nbEdges * 4* Float32Array.BYTES_PER_ELEMENT);
-// const dataMid = copyMidArrayBuffer.slice();
-// console.log(copyMidArrayBuffer.slice())
-// edgeMidStagingBuffer.unmap();
-// let tMid = [...(new Float32Array(dataMid))]//.filter(u => u != 0)
+const copyMidArrayBuffer = edgeMidStagingBuffer.getMappedRange(0, nbEdges * 4* Float32Array.BYTES_PER_ELEMENT);
+const dataMid = copyMidArrayBuffer.slice();
+console.log(copyMidArrayBuffer.slice())
+edgeMidStagingBuffer.unmap();
+let tMid = [...(new Float32Array(dataMid))]//.filter(u => u != 0)
 
-// console.log(tMid)
+console.log("midpoints", tMid)
+
+await triIndexStagingBuffer.mapAsync(
+    GPUMapMode.READ,
+    0, //offset
+    nbCubes * 15 * Uint32Array.BYTES_PER_ELEMENT
+);
+const copyArrayBufferIndexfinal = triIndexStagingBuffer.getMappedRange(0, nbCubes * 15 * Uint32Array.BYTES_PER_ELEMENT);
+const dataIndexfinal = copyArrayBufferIndexfinal.slice();
+console.log(copyArrayBufferIndexfinal.slice())
+triIndexStagingBuffer.unmap();
+let tindexfinal = [...(new Uint32Array(dataIndexfinal))]//.filter(u => u != 4294967295)
+
+console.log("final ids", tindexfinal)
 
 
+let offFile = "OFF\n";
+offFile += `${verticesCreated} ${indicesCreated / 3} 0`;
 
+// '1440 'indicesCreated 0\n';
+
+for(let vert = 0; vert < verticesCreated; ++vert){
+	offFile += `${tMid[4*vert]} ${tMid[4*vert+1]} ${tMid[4*vert+2]}\n`;
+}
+
+for(let f = 0; f < indicesCreated / 3; ++f) {
+	offFile += `3 ${tindexfinal[3*f]} ${tindexfinal[3*f+1]} ${tindexfinal[3*f+2]}\n`;
+}
+
+console.log(offFile);
 
 
 
@@ -734,6 +984,10 @@ const edgeLinesBindGroup = device.createBindGroup({
     ],
 });
 
+
+
+
+
 const gridShaderCode = await fetch("./shaders/Vertices/vertexBillboard.wgsl").then((response) => response.text())
 const gridShaderModule = device.createShaderModule({
     label: 'grid vertex shader',
@@ -811,6 +1065,92 @@ const edgeMidBindGroup = device.createBindGroup({
 
 
 
+
+const surfaceShaderCode = await fetch("./shaders/surface.wgsl").then((response) => response.text())
+const surfaceShaderModule = device.createShaderModule({
+    label: 'surface  shader',
+    code: surfaceShaderCode,
+});
+
+const surfaceBindGroupLayout = device.createBindGroupLayout({
+    label: 'surface bind group layout',
+    entries: [
+        { /// uniform buffer
+            binding: 0,
+            visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
+            buffer: {},
+        },
+        { /// vertex storage buffer
+            binding: 1,
+            visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
+            buffer: {
+                type: 'read-only-storage',
+            }
+        }
+    ]
+});
+
+const surfacePipelineLayout = device.createPipelineLayout({
+    bindGroupLayouts: [
+        surfaceBindGroupLayout,
+    ],
+});
+
+const surfacePipeline = device.createRenderPipeline({
+    label: 'surface pipeline',
+    layout: surfacePipelineLayout,
+    vertex: {
+        module: surfaceShaderModule,
+        entryPoint: 'vertex',
+        buffers: [ {
+            attributes: [
+                {
+                    shaderLocation: 0,
+                    offset: 0,
+                    format: 'float32x4',
+                },],
+            arrayStride: 16,
+        }],
+    },
+    fragment: {
+        module: surfaceShaderModule,
+        entryPoint: 'fragment',
+        targets: [{
+            format: navigator.gpu.getPreferredCanvasFormat(),
+        }]
+    },
+    depthStencil: {
+        depthWriteEnabled: true,
+        depthCompare: 'less',
+        format: 'depth24plus',
+    },
+    primitive: {
+        // cullMode: 'back',
+        // topology: "point-list"
+    },
+});
+
+const surfaceBindGroup = device.createBindGroup({
+    label: 'surface bind group',
+    layout: surfaceBindGroupLayout,
+    entries: [
+        {binding: 0, resource: {buffer: uniformBuffer}},
+        {binding: 1, resource: {buffer: edgeMidStorageBuffer}},
+    ],
+});
+
+// const edgeMidBindGroup = device.createBindGroup({
+//     label: 'edge mid bind group',
+//     layout: gridBindGroupLayout,
+//     entries: [
+//         {binding: 0, resource: {buffer: uniformBuffer}},
+//         {binding: 1, resource: {buffer: edgeMidStorageBuffer}},
+//     ],
+// });
+
+
+
+
 const colorAttachment = {
     view: null,
     clearValue: {r: 0.8, g: 0.8, b: 0.8, a: 1},
@@ -830,7 +1170,6 @@ const depthStencilAttachment = {
 /// rendering
 function render() {
 
-    //move to render function
     const uniformArray = new Float32Array([
         ...camera.position, 0.0,
         ...camera.view,
@@ -845,6 +1184,7 @@ function render() {
         colorAttachments: [colorAttachment],
         depthStencilAttachment: depthStencilAttachment,
     });
+
     renderPass.setPipeline(gridPipeline);
     renderPass.setVertexBuffer(0, vertexBuffer);
     renderPass.setIndexBuffer(indexBuffer, model.indexType);
@@ -853,7 +1193,8 @@ function render() {
 
     renderPass.setBindGroup(0, edgeMidBindGroup);
     // renderPass.drawIndexed(model.numIndices, 6528);
-    renderPass.drawIndexed(model.numIndices, 1440);
+    // renderPass.drawIndexed(model.numIndices, 852);
+    // renderPass.drawIndexed(model.numIndices, verticesCreated);
 
 
 
@@ -862,6 +1203,14 @@ function render() {
     // renderPass.setPipeline(edgeLinesPipeline);
     // renderPass.setBindGroup(0, edgeLinesBindGroup);
     // renderPass.draw(2, nbEdges);
+
+	renderPass.setVertexBuffer(0, edgeMidStorageBuffer);
+    renderPass.setIndexBuffer(triIndexStorageBuffer, 'uint32');
+    renderPass.setBindGroup(0, surfaceBindGroup);
+
+	renderPass.setPipeline(surfacePipeline);
+    renderPass.drawIndexed(indicesCreated);
+
     renderPass.end();
 
     device.queue.submit([renderCommandEncoder.finish()]);

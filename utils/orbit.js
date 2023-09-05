@@ -107,6 +107,7 @@ export class OrbitController {
     }
 
     #handleWheelEvent(e) {
+		this.changed = true;
         this.#distance *= Math.exp(this.#zoomSensitivity * e.deltaY);
     }
 

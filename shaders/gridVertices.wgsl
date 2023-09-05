@@ -9,10 +9,10 @@ var <storage, read_write> vertices : array<Vertex>;
 
 const Min : vec3f = vec3f(-1.0,-1.0,-1.0);
 const Max : vec3f = vec3f(1.0,1.0,1.0);
-override STEP : f32 = 2.0 / 16.0;
-override X : u32 = 16u;
-override Y : u32 = 16u;
-override Z : u32 = 16u;
+override STEP : f32 = 2.0 / 64.0;
+override X : u32 = 64u;
+override Y : u32 = 64u;
+override Z : u32 = 64u;
 // override NbVertices = 33u * 33u * 33u;
 
 //const step : vec3f = vec3f
@@ -36,7 +36,7 @@ fn computeVertexValue(pos: vec3f) -> f32 {
     // www-sop.inria.fr/galaad/surface/
     // chubs
     // return pow(pos.x, 4)+pow(pos.y, 4)+pow(pos.z, 4)-pow(pos.x, 2)-pow(pos.y, 2)-pow(pos.z, 2)+0.5; 
-    let pos1 = 1.35* pos;
+    let pos1 = 1.32* pos;
     let pos2 = pos1 * pos1;
     let pos4 = pos2 * pos2;
 

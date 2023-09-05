@@ -15,15 +15,21 @@ var<storage, read_write> edgeChunkOffset : array<u32>;
 var<storage, read_write> edgeMid : array<vec3f>;
 @group(0) @binding(5)
 var<storage, read_write> rawTri : array<u32>;
+@group(0) @binding(6)
+var<storage, read_write> indexCount : array<u32>;
+@group(0) @binding(7)
+var<storage, read_write> rawTriOffset : array<u32>;
+// @group(1) @binding(9)
+// var<storage, read_write> indexBuffer : array<u32>;
 
 const INVALID = 0u - 1u;
 const inv = INVALID;
 const Min : vec3f = vec3f(-1.0,-1.0,-1.0);
 const Max : vec3f = vec3f(1.0,1.0,1.0);
-override STEP : f32 = 2.0 / 16.0;
-override X : u32 = 16u;
-override Y : u32 = 16u;
-override Z : u32 = 16u;
+override STEP : f32 = 2.0 / 64.0;
+override X : u32 = 64u;
+override Y : u32 = 64u;
+override Z : u32 = 64u;
 override NbVertices = (X+1) * (Y+1) * (Z+1);
 override CHUNKSIZE = 64u;
 //const step : vec3f = vec3f
@@ -86,7 +92,7 @@ fn cellEdge(coord: vec3u, i: u32) -> u32 {
         case 11: { e = zEOff + (coord.x+1) + (X+1)*(coord.y+1) + xEOff1 * coord.z; }
         default: {}
     }
-    return i;
+    return e;
 }
 
 override nbX = (X)*(Y+1)*(Z+1);
@@ -139,6 +145,10 @@ fn countEdgesPerChunk(@builtin(global_invocation_id) global_id : vec3<u32>) {
     _ = X;
     _ = Y;
     _ = Z;
+	if(global_id.x >= arrayLength(&chunkEdges) - 1) {
+        return;
+    }
+
 
     /// first edge of chunk
     let chunkOffset = global_id.x * CHUNKSIZE;
@@ -478,8 +488,6 @@ fn computeCellTriangles(@builtin(global_invocation_id) global_id : vec3<u32>) {
         return;
     }
 
-    // let offset = edgeChunkOffset[global_id.x];
-    // fn cellEdge(coord: vec3u, i: u32) -> u32 {
     let coord = cellCoord(global_id.x);
 
     let vId = array<u32, 8>(
@@ -506,20 +514,33 @@ fn computeCellTriangles(@builtin(global_invocation_id) global_id : vec3<u32>) {
     var off = caseId * 16;
     let triOff = global_id.x * 15;
     for(var i = 0u; i < 15; i++) {
-        // let id = triTable[off + i];
-        // if(id != inv) {
-        //     rawTri[triOff + i] = edgeChunkOffset[cellEdge(coord, id)];
-        // } else {
-        //     rawTri[triOff + i] = inv;
-        // }
+        let id = triTable[off + i];
+        if(id != inv) {
+            // rawTri[triOff + i] = cellEdge(coord, id);
+            rawTri[triOff + i] = edgeChunkOffset[cellEdge(coord, id)];
+        } else {
+            rawTri[triOff + i] = inv;
+        }
     }
 
 
-    rawTri[global_id.x * 15] = caseId;
-    rawTri[global_id.x * 15 + 1] = coord.x;
-    rawTri[global_id.x * 15 + 2] = coord.y;
-    rawTri[global_id.x * 15 + 3] = coord.z;
-    // rawTri[global_id.x * 15 + 1] = cellEdge(coord, 0);
+    // rawTri[global_id.x * 15] = caseId;
+    // rawTri[global_id.x * 15 + 1] = off;
+    // rawTri[global_id.x * 15 + 1] = coord.x;
+    // rawTri[global_id.x * 15 + 2] = coord.y;
+    // rawTri[global_id.x * 15 + 3] = coord.z;
+    // rawTri[global_id.x * 15 + 2] = cellEdge(coord, 0);
+    // rawTri[global_id.x * 15 + 3] = cellEdge(coord, 1);
+    // rawTri[global_id.x * 15 + 4] = cellEdge(coord, 2);
+    // rawTri[global_id.x * 15 + 5] = cellEdge(coord, 3);
+    // rawTri[global_id.x * 15 + 6] = cellEdge(coord, 4);
+    // rawTri[global_id.x * 15 + 7] = cellEdge(coord, 5);
+    // rawTri[global_id.x * 15 + 8] = cellEdge(coord, 6);
+    // rawTri[global_id.x * 15 + 9] = cellEdge(coord, 7);
+    // rawTri[global_id.x * 15 + 10] = cellEdge(coord, 8);
+    // rawTri[global_id.x * 15 + 11] = cellEdge(coord, 9);
+    // rawTri[global_id.x * 15 + 12] = cellEdge(coord, 10);
+    // rawTri[global_id.x * 15 + 13] = cellEdge(coord, 11);
 
     _ = X;
     _ = Y;
@@ -529,17 +550,43 @@ fn computeCellTriangles(@builtin(global_invocation_id) global_id : vec3<u32>) {
 
 @compute @workgroup_size(64)
 fn countTrianglesPerChunk(@builtin(global_invocation_id) global_id : vec3<u32>) {
-
-
     _ = X;
     _ = Y;
     _ = Z;
     _ = CHUNKSIZE;
+
+	if(global_id.x >= arrayLength(&indexCount) - 1) {
+        return;
+    }
+
+    let chunkOffset = global_id.x * CHUNKSIZE;
+    var localOffset = 0u;
+    for(var i = 0u; i < CHUNKSIZE; i++) {
+		// for(var t = 0u; t < 15; t++) {
+			if(rawTri[chunkOffset + i ] != INVALID) {
+				rawTriOffset[chunkOffset + i ] = localOffset;
+				localOffset++;
+			} 
+			else {
+				// break;
+				rawTriOffset[chunkOffset + i ] = INVALID;
+			}
+		// }
+	}
+
+	indexCount[global_id.x] = localOffset;
 }
 
 @compute @workgroup_size(1)
 fn reduceTriangleCount() {
-
+    var off0 = indexCount[0];
+    var off1 = 0u;
+    indexCount[0] = 0;
+    for(var i = 0u; i < arrayLength(&indexCount) - 1; i++) {
+        off1 = indexCount[i+1];
+        indexCount[i+1] = indexCount[i] + off0;
+        off0 = off1;
+    }
 
     _ = X;
     _ = Y;
@@ -549,20 +596,28 @@ fn reduceTriangleCount() {
 
 @compute @workgroup_size(64)
 fn completeTriangleOffsets(@builtin(global_invocation_id) global_id : vec3<u32>) {
+    if(global_id.x >= arrayLength(&rawTriOffset)
+        || rawTriOffset[global_id.x] == INVALID) {
+        return;
+    }
 
+    let chunkId = global_id.x / CHUNKSIZE;
+    let chunkOffset = indexCount[chunkId];
 
-    _ = X;
-    _ = Y;
-    _ = Z;
-    _ = CHUNKSIZE;
-}
-
-@compute @workgroup_size(64)
-fn copyToIndexBuffer(@builtin(global_invocation_id) global_id : vec3<u32>) {
-
+    rawTriOffset[global_id.x] += chunkOffset ;
 
     _ = X;
     _ = Y;
     _ = Z;
     _ = CHUNKSIZE;
 }
+
+// @compute @workgroup_size(64)
+// fn copyToIndexBuffer(@builtin(global_invocation_id) global_id : vec3<u32>) {
+
+
+//     _ = X;
+//     _ = Y;
+//     _ = Z;
+//     _ = CHUNKSIZE;
+// }

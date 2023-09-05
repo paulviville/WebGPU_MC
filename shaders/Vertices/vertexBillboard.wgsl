@@ -40,7 +40,7 @@ struct Uniforms {
 @group(0) @binding(0) var<uniform> uniforms : Uniforms;
 @group(0) @binding(1) var <storage, read> vertices : array<Vertex>;
 
-const pointSize = 0.025;
+const pointSize = 0.0125;
 const lightPos : vec3f = vec3<f32>(1.0,1.0,1.0);
 
 @vertex
