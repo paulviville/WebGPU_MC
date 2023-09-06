@@ -41,10 +41,10 @@ fn vertex(input : VertexInput) -> VertexOutput {
     let position = vec4f(input.position.xyz, 1);
 	// let position = vec4f(vertices[input.vid].position, 1);
     // let normal = ( vec4f(input.normal, 0)).xyz;
-	let normal = position.xyz;
+	let normal = ( position).xyz;
     return VertexOutput(
         uniforms.camera.projection * uniforms.camera.view * position,
-        normalize(normal),
+        position.xyz,
     );
 }
 
@@ -53,9 +53,11 @@ const lightPos : vec3f = vec3<f32>(1.0,1.0,1.0);
 fn fragment(input : FragmentInput) -> FragmentOutput {
 	var N : vec3f;
 	N = normalize(cross(dpdx(input.position), dpdy(input.position)));
+    // N = input.position;
 	let P = input.position;
     let L = normalize(lightPos - P);
     return FragmentOutput(
+        // vec4f(N, 1.0),
         vec4f(vec3f(max(dot(N, L), 0.2*dot(N, -L))), 1.0),
     );
 }
