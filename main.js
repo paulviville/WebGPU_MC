@@ -176,7 +176,7 @@ const rawTriStagingBuffer = device.createBuffer({
 });
 
 const cubeChunkSize = 64
-const nbCubeChunks = Math.ceil((nbCubes *15)/ chunkSize);
+const nbCubeChunks = Math.ceil((nbCubes *15)/ cubeChunkSize);
 const cubeCountChunkStorageBuffer = device.createBuffer({
     label: "nb edges/chunk storage buffer",
     size: (nbCubeChunks+1) * Uint32Array.BYTES_PER_ELEMENT,
@@ -601,45 +601,47 @@ let p0 = performance.now();
 const commandEncoder = device.createCommandEncoder();
 const passEncoder = commandEncoder.beginComputePass();
 
+const workgroup_size = 64;
+
 passEncoder.setPipeline(pipeline);
 passEncoder.setBindGroup(0, bindGroup);
-passEncoder.dispatchWorkgroups(Math.ceil(nbVertices / 64));
+passEncoder.dispatchWorkgroups(Math.ceil(nbVertices / workgroup_size));
 
 
 passEncoder.setPipeline(EdgeActiveComputePipeline);
 passEncoder.setBindGroup(0, edgeIdComputeBindGroup);
-passEncoder.dispatchWorkgroups(Math.ceil(nbEdges / 64));
+passEncoder.dispatchWorkgroups(Math.ceil(nbEdges / workgroup_size));
 
 passEncoder.setPipeline(EdgePerChunkComputePipeline);
-passEncoder.dispatchWorkgroups(Math.ceil(nbChunks / 64));
+passEncoder.dispatchWorkgroups(Math.ceil(nbChunks / workgroup_size));
 
 passEncoder.setPipeline(chunkReducePipeline);
 passEncoder.dispatchWorkgroups(1);
 
 passEncoder.setPipeline(edgeOffsetPipeline);
-passEncoder.dispatchWorkgroups(Math.ceil(nbEdges / 64));
+passEncoder.dispatchWorkgroups(Math.ceil(nbEdges / workgroup_size));
 
 passEncoder.setPipeline(edgeMidPipeline);
-passEncoder.dispatchWorkgroups(Math.ceil(nbEdges / 64));
+passEncoder.dispatchWorkgroups(Math.ceil(nbEdges / workgroup_size));
 
 passEncoder.setPipeline(cellTrianglesComputePipeline);
-passEncoder.dispatchWorkgroups(Math.ceil(nbCubes / 64));
+passEncoder.dispatchWorkgroups(Math.ceil(nbCubes / workgroup_size));
 
 passEncoder.setPipeline(countTrianglesPerChunkPipeline);
-passEncoder.dispatchWorkgroups(Math.ceil(nbCubeChunks / 64));
+passEncoder.dispatchWorkgroups(Math.ceil(nbCubeChunks / workgroup_size));
 
 passEncoder.setPipeline(reduceTriangleCountPipeline);
 passEncoder.dispatchWorkgroups(1);
 
 passEncoder.setPipeline(indexOffsetPipeline);
-passEncoder.dispatchWorkgroups(Math.ceil((nbCubes*15) / 64));
+passEncoder.dispatchWorkgroups(Math.ceil((nbCubes*15) / workgroup_size));
 
 
 
 
 passEncoder.setBindGroup(0, indexBufferComputeBindGroup);
 passEncoder.setPipeline(copyToIndexBufferPipeline);
-passEncoder.dispatchWorkgroups(Math.ceil((nbCubes*15) / 64));
+passEncoder.dispatchWorkgroups(Math.ceil((nbCubes*15) / workgroup_size));
 
 
 passEncoder.end();
@@ -741,20 +743,20 @@ console.log(p0, p1, p1 - p0);
 // console.log(t)
 
 
-// await chunkActiveEdgesStagingBuffer.mapAsync(
-//     GPUMapMode.READ,
-//     0, //offset
-//     (nbChunks + 1) * Uint32Array.BYTES_PER_ELEMENT
-// );
-// const copyArrayBuffer2 = chunkActiveEdgesStagingBuffer.getMappedRange(0, (nbChunks+1)*Uint32Array.BYTES_PER_ELEMENT);
-// const data2 = copyArrayBuffer2.slice();
-// // console.log(copyArrayBuffer2.slice())
-// chunkActiveEdgesStagingBuffer.unmap();
-// let t2 = [...(new Uint32Array(data2))]//.filter(u => u != 4294967295)
+await chunkActiveEdgesStagingBuffer.mapAsync(
+    GPUMapMode.READ,
+    0, //offset
+    (nbChunks + 1) * Uint32Array.BYTES_PER_ELEMENT
+);
+const copyArrayBuffer2 = chunkActiveEdgesStagingBuffer.getMappedRange(0, (nbChunks+1)*Uint32Array.BYTES_PER_ELEMENT);
+const data2 = copyArrayBuffer2.slice();
+// console.log(copyArrayBuffer2.slice())
+chunkActiveEdgesStagingBuffer.unmap();
+let t2 = [...(new Uint32Array(data2))]//.filter(u => u != 4294967295)
 
-// // console.log(t2.slice(-1))
-// const verticesCreated = t2.slice(-1);
-// console.log("CREATED : " + verticesCreated + " Vertices");
+// console.log(t2.slice(-1))
+const verticesCreated = t2.slice(-1);
+console.log("CREATED : " + verticesCreated + " Vertices");
 
 
 // await rawTriStagingBuffer.mapAsync(
@@ -809,7 +811,7 @@ let tCubeId = [...(new Uint32Array(dataIdCount))]//.filter(u => u != 4294967295)
 // console.log(nbCubes)
 // console.log(tCubeId)
 const indicesCreated = tCubeId.splice(-1)[0];
-// console.log("nb indices:" + indicesCreated);
+console.log("nb indices:" + indicesCreated);
 
 // console.log(tCubeId.reduce((acc, curr) => acc + curr))
 
@@ -849,20 +851,20 @@ let tindexfinal = [...(new Uint32Array(dataIndexfinal))]//.filter(u => u != 4294
 // console.log("final ids", tindexfinal)
 
 
-// let offFile = "OFF\n";
-// offFile += `${verticesCreated} ${indicesCreated / 3} 0`;
+let offFile = "OFF\n";
+offFile += `${verticesCreated} ${indicesCreated / 3} 0`;
 
-// // '1440 'indicesCreated 0\n';
+// '1440 'indicesCreated 0\n';
 
-// for(let vert = 0; vert < verticesCreated; ++vert){
-// 	offFile += `${tMid[4*vert]} ${tMid[4*vert+1]} ${tMid[4*vert+2]}\n`;
-// }
+for(let vert = 0; vert < verticesCreated; ++vert){
+	offFile += `${tMid[4*vert]} ${tMid[4*vert+1]} ${tMid[4*vert+2]}\n`;
+}
 
-// for(let f = 0; f < indicesCreated / 3; ++f) {
-// 	offFile += `3 ${tindexfinal[3*f]} ${tindexfinal[3*f+1]} ${tindexfinal[3*f+2]}\n`;
-// }
+for(let f = 0; f < indicesCreated / 3; ++f) {
+	offFile += `3 ${tindexfinal[3*f]} ${tindexfinal[3*f+1]} ${tindexfinal[3*f+2]}\n`;
+}
 
-// console.log(offFile);
+console.log(offFile);
 
 
 

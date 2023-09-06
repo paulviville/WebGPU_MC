@@ -32,15 +32,26 @@ fn computeVertexId(globalId: u32) -> vec3u {
 //     return pow(pos.x, 4)+pow(pos.y, 4)+pow(pos.z, 4)-pow(pos.x, 2)-pow(pos.y, 2)-pow(pos.z, 2)+0.5; 
 // }
 
+fn twist(pos: vec3f) -> vec3f {
+    let k = 1.25f;
+    let c = cos(k*pos.y);
+    let s = sin(k*pos.y);
+    let m = mat2x2f(c, -s, s, c);
+    let q = vec3f(m*pos.xz, pos.y);
+    
+    return q;
+}
+
 fn computeVertexValue(pos: vec3f) -> f32 {
     // www-sop.inria.fr/galaad/surface/
     // chubs
     // return pow(pos.x, 4)+pow(pos.y, 4)+pow(pos.z, 4)-pow(pos.x, 2)-pow(pos.y, 2)-pow(pos.z, 2)+0.5; 
+    // let pos0 = twist(pos);
     let pos1 = 1.32* pos;
     let pos2 = pos1 * pos1;
     let pos4 = pos2 * pos2;
 
-    return 10.*f32((pos2.x+pos2.y+pos2.z-2.895)>0.0)+(pos2.x+pos2.y+pos2.z-1.1)-(67.77*pos2.x*pos2.y*pos2.z-27.41*pos4.x*pos2.y-27.41*pos2.x*pos4.z+10.47*pos4.x*pos2.z-27.41*pos4.y*pos2.z+10.47*pos4.y*pos2.x+10.47*pos2.y*pos4.z-4.23*pos4.x-8.47*pos2.x*pos2.y-8.47*pos2.x*pos2.z+8.47*pos2.x-4.23*pos4.y-8.47*pos2.y*pos2.z+8.47*pos2.y-4.23*pos4.z+8.47*pos2.z-4.23);
+    return 10.*f32((pos2.x+pos2.y+pos2.z-2.895)>0.04)+(pos2.x+pos2.y+pos2.z-1.125)-(67.77*pos2.x*pos2.y*pos2.z-27.41*pos4.x*pos2.y-27.41*pos2.x*pos4.z+10.47*pos4.x*pos2.z-27.41*pos4.y*pos2.z+10.47*pos4.y*pos2.x+10.47*pos2.y*pos4.z-4.23*pos4.x-8.47*pos2.x*pos2.y-8.47*pos2.x*pos2.z+8.47*pos2.x-4.23*pos4.y-8.47*pos2.y*pos2.z+8.47*pos2.y-4.23*pos4.z+8.47*pos2.z-4.23);
 }
 
 @compute @workgroup_size(64)
